@@ -16,12 +16,16 @@ class ViewController: UIViewController {
 //        spinner.debugEnabled = true
         spinner.formatter.maximumFractionDigits = 2
         spinner.formatter.numberStyle = .CurrencyStyle
+        let large = [NSFontAttributeName: UIFont.systemFontOfSize(20)]
+        let small = [NSFontAttributeName: UIFont.systemFontOfSize(14)]
+        spinner.integerTextAttributes = large
+        spinner.separatorTextAttributes = large
+        spinner.fractionTextAttributes = small
         spinner.updateFormat()
-//        spinner.formatter.usesGroupingSeparator = true
     }
 
 
-    @IBOutlet weak var spinner: NumberSpinner!
+    @IBOutlet weak var spinner: NumberSpinnerView!
 
     
     @IBAction func random() {

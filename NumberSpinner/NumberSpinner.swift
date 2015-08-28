@@ -12,12 +12,11 @@ private let ViewDebugColor = UIColor.yellowColor()
 private let SpinnerDebugColor = UIColor.greenColor()
 
 @IBDesignable
-public class NumberSpinner: UIView {
+public class NumberSpinnerView: UIView {
     
     private var _formatter: NSNumberFormatter = {
        let nf = NSNumberFormatter()
         nf.numberStyle = .DecimalStyle
-        nf.usesGroupingSeparator = false
         return nf
         }()
     
@@ -31,6 +30,14 @@ public class NumberSpinner: UIView {
             updateFormat()
         }
     }
+    
+    public var integerTextAttributes: [String: AnyObject]?
+    
+    public var fractionTextAttributes: [String: AnyObject]?
+    
+    public var separatorTextAttributes: [String: AnyObject]?
+    
+    public var symbolAttributes: [String: AnyObject]?
 
     @IBInspectable
     public var value: Double = 0 {
@@ -50,10 +57,11 @@ public class NumberSpinner: UIView {
         didSet {
             spinner.debugEnabled = debugEnabled
             backgroundColor = debugEnabled ? ViewDebugColor : nil
+            layer.masksToBounds = !debugEnabled
         }
     }
     
-    // Autolayout is required to automatically resize this view.
+    // Autolayout is required to dynamically resize this view.
     public override class func requiresConstraintBasedLayout() -> Bool {
         return true
     }
@@ -83,14 +91,14 @@ public class NumberSpinner: UIView {
     private var fractionLayers = [StringTrackLayer]()
     lazy private var separatorLayer: StringTrackLayer = {
         let decimalSeparator = self.formatter.decimalSeparator
-        let separator = StringTrackLayer.trackLayerForSample(decimalSeparator)
+        let separator = StringTrackLayer.trackLayerForSample(decimalSeparator, attributes: self.separatorTextAttributes)
         return separator
     }()
     
     public func updateFormat() {
         integerLayers = []
         fractionLayers = []
-        separatorLayer = StringTrackLayer.trackLayerForSample(formatter.decimalSeparator)
+        separatorLayer = StringTrackLayer.trackLayerForSample(formatter.decimalSeparator, attributes: separatorTextAttributes)
         updateAgainstValue()
     }
     
@@ -109,13 +117,14 @@ public class NumberSpinner: UIView {
             // We insert components to the head
             integerStrings.prefixUpTo(integerDiff).reverse().forEach {
                 s in
-                self.integerLayers.insert(StringTrackLayer.trackLayerForSample(s), atIndex: 0)
+                let track = StringTrackLayer.trackLayerForSample(s, attributes: integerTextAttributes)
+                self.integerLayers.insert(track, atIndex: 0)
             }
         } else if integerDiff < 0 {
             integerLayers = Array(integerLayers.suffixFrom(abs(integerDiff)))
         }
         
-        fixInvalidPairs(integerStrings, tracks: &integerLayers)
+        fixInvalidPairs(integerStrings, tracks: &integerLayers, attributes: integerTextAttributes)
         
         // Update fraction part
         let fractionStrings = split.count == 2 ? split[1].map{ String($0) } : []
@@ -125,13 +134,14 @@ public class NumberSpinner: UIView {
             // We append fraction components to the trail
             fractionStrings.suffixFrom(fractionLayers.count).forEach {
                 s in
-                fractionLayers.append(StringTrackLayer.trackLayerForSample(s))
+                let track = StringTrackLayer.trackLayerForSample(s, attributes: fractionTextAttributes)
+                fractionLayers.append(track)
             }
         } else if fractionDiff < 0 {
             fractionLayers = Array(fractionLayers.prefixUpTo(fractionStrings.count))
         }
         
-        fixInvalidPairs(fractionStrings, tracks: &fractionLayers)
+        fixInvalidPairs(fractionStrings, tracks: &fractionLayers, attributes: fractionTextAttributes)
         
         // Final composition
         let composition: [StringTrackLayer]
@@ -172,13 +182,13 @@ public class NumberSpinner: UIView {
         :param: values Strings that each matches a layer in the track array.
         :param: tracks Tracks that each matches a string in the string array
     */
-    private func fixInvalidPairs(values: [String], inout tracks: [StringTrackLayer]) {
+    private func fixInvalidPairs(values: [String], inout tracks: [StringTrackLayer], attributes: [String: AnyObject]?) {
         zip(values, tracks).enumerate().forEach {
             e in
             let s = e.element.0
             let layer = e.element.1
             if !layer.hasUnit(s) {
-                let replacement = StringTrackLayer.trackLayerForSample(s)
+                let replacement = StringTrackLayer.trackLayerForSample(s, attributes: attributes)
                 integerLayers[e.index] = replacement
             }
         }
@@ -205,7 +215,7 @@ public class NumberSpinner: UIView {
     }
 }
 
-extension NumberSpinner: SpinnerLayerDelegate {
+extension NumberSpinnerView: SpinnerLayerDelegate {
     func spinnerLayer<C where C : CALayer, C : SpinnerComponent>(spinnerLayer: SpinnerLayer<C>, preferredSizeDidChange preferredSize: CGSize) {
         layoutSpinner()
     }
@@ -216,7 +226,7 @@ protocol SpinnerLayerDelegate: class {
     func spinnerLayer<C where C: CALayer, C: SpinnerComponent>(spinnerLayer: SpinnerLayer<C>, preferredSizeDidChange preferredSize: CGSize)
 }
 
-class SpinnerLayer<Component where Component: CALayer, Component: SpinnerComponent>: CALayer {
+public class SpinnerLayer<Component where Component: CALayer, Component: SpinnerComponent>: CALayer {
     
     // Provide initializers because we make this subclass generic
     override init() {
@@ -295,13 +305,13 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
     }()
     
     // MARK: - Properties
-    private var _attributes: [String: AnyObject]?
-    public var attributes: [String: AnyObject] {
+    private var _textAttributes: [String: AnyObject]?
+    public var textAttributes: [String: AnyObject] {
         get {
-            return self.dynamicType.defaultAttributes.merge(_attributes)
+            return self.dynamicType.defaultAttributes.merge(_textAttributes)
         }
         set {
-            _attributes = newValue
+            _textAttributes = newValue
             update()
         }
     }
@@ -309,26 +319,30 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
     public var debugEnabled = false {
         didSet {
             if oldValue != debugEnabled {
-                setNeedsDisplay()
+                update()
             }
         }
     }
     
     private let drawingUnits: [String]
+    private let maskLayer = CAShapeLayer()
     
     // MARK: - Initializers
-    public init(strings: [String]) {
+    public init(strings: [String], attributes: [String: AnyObject]? = nil) {
         drawingUnits = strings
         super.init()
+        if let attributes = attributes {
+            textAttributes = attributes
+        }
         update()
     }
     
     public required init?(coder aDecoder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    public convenience init(stringUnion: String) {
+    public convenience init(stringUnion: String, attributes: [String: AnyObject]? = nil) {
         let strings = stringUnion.characters.flatMap{String($0)}
-        self.init(strings: strings)
+        self.init(strings: strings, attributes: attributes)
     }
     
     public override init(layer: AnyObject) {
@@ -337,13 +351,13 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
     }
     
     // MARK: - Convenient factory method
-    public class func trackLayerForSample(sample: String) -> StringTrackLayer {
+    public class func trackLayerForSample(sample: String, attributes: [String: AnyObject]? = nil) -> StringTrackLayer {
         if sample.characters.count == 1 {
             if NSCharacterSet.decimalDigitCharacterSet().characterIsMember(sample.utf16.first!) {
-                return StringTrackLayer(stringUnion: "0123456789")
+                return StringTrackLayer(stringUnion: "0123456789", attributes: attributes)
             }
         }
-        return StringTrackLayer(strings: [sample])
+        return StringTrackLayer(strings: [sample], attributes: attributes)
     }
     
     public func hasUnit(unit: String) -> Bool {
@@ -352,14 +366,25 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
     
     private func update() {
         // Size for each unit may vary, use the largest one
-        unitSize = drawingUnits.reduce(CGRectZero) {
+        let unitRect = drawingUnits.reduce(CGRectZero) {
             previous, unit in
-            let unitBounds = CGRect(origin: previous.origin, size: unit.sizeWithAttributes(attributes))
+            let unitBounds = CGRect(origin: previous.origin, size: unit.sizeWithAttributes(textAttributes))
             return previous.rectByUnion(unitBounds)
-        }.size
+        }
+        unitSize = unitRect.size
         
         let frameSize = CGSize(width: unitSize.width, height: unitSize.height * CGFloat(drawingUnits.count))
         frame.size = frameSize
+        
+        if debugEnabled {
+            mask = nil
+        } else {
+            mask = maskLayer
+            maskLayer.frame.size = unitSize
+            maskLayer.position.x = bounds.midX
+            maskLayer.path = CGPathCreateWithRect(unitRect, nil)
+        }
+        
         setNeedsDisplay()
     }
     
@@ -369,7 +394,7 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
         for (index, aString) in drawingUnits.enumerate() {
             let drawPoint = CGPointMake(0, height * CGFloat(index))
             let drawRect = CGRect(origin: drawPoint, size: unitSize)
-            aString.drawInRect(drawRect, withAttributes:attributes)
+            aString.drawInRect(drawRect, withAttributes:textAttributes)
             if debugEnabled {
                 UIColor.redColor().setStroke()
                 CGContextStrokeRectWithWidth(ctx, drawRect, 1)
@@ -383,11 +408,19 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
     public private(set) var unitSize = CGSize.zeroSize
     
     public func scrollToUnitAtIndex(index: Int) {
-        let y = unitSize.height * -CGFloat(index) + bounds.height / 2
+        let offset = unitSize.height * -CGFloat(index)
+        let y = bounds.midY + offset
         position.y = y
+        
+        maskLayer.position.y = maskLayer.bounds.midY - offset
     }
     
-    func scrollToUnit(unit: String) {
+    /**
+    Convenience method to sroll to a particular unit string (to the first occurance)
+    
+    :param: unit A string unit drawn by this track.
+    */
+    public func scrollToUnit(unit: String) {
         if let index = drawingUnits.indexOf(unit) {
             scrollToUnitAtIndex(index)
         }
