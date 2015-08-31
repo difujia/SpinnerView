@@ -151,7 +151,7 @@ public class NumberSpinnerView: UIView {
             composition = integerLayers
         }
         
-        let spinning = {
+        let spinToPosition = {
             // Animate to appropriate position
             CATransaction.begin()
             CATransaction.setAnimationDuration(self.spinningDuration)
@@ -170,7 +170,7 @@ public class NumberSpinnerView: UIView {
         }
         CATransaction.begin()
         CATransaction.setAnimationDuration(alignmentDuration)
-        CATransaction.setCompletionBlock(spinning)
+        CATransaction.setCompletionBlock(spinToPosition)
         spinner.components = composition
         
         CATransaction.commit()
@@ -242,14 +242,7 @@ public class SpinnerLayer<Component where Component: CALayer, Component: Spinner
     /// Spinner components to be arranged in a row in the same order they appear in this array.
     var components: [Component]? {
         didSet {
-            components?.forEach { $0.debugEnabled = self.debugEnabled }
-            let componentsUpCast = components as [CALayer]?
-            let componentsSet = Set(componentsUpCast ?? [])
-            let sublayersSet = Set(sublayers ?? [])
-            let addition = componentsSet.subtract(sublayersSet)
-            addition.forEach { self.insertSublayer($0, atIndex: 0) }
-            let removal = sublayersSet.subtract(componentsSet)
-            removal.forEach { $0.removeFromSuperlayer() }
+            sublayers = components
             arrangeComponents()
         }
     }
@@ -411,7 +404,6 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
         let offset = unitSize.height * -CGFloat(index)
         let y = bounds.midY + offset
         position.y = y
-        
         maskLayer.position.y = maskLayer.bounds.midY - offset
     }
     

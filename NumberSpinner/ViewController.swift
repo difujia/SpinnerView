@@ -19,7 +19,7 @@ class ViewController: UIViewController {
         let large = [NSFontAttributeName: UIFont.systemFontOfSize(20)]
         let small = [NSFontAttributeName: UIFont.systemFontOfSize(14)]
         spinner.integerTextAttributes = large
-        spinner.separatorTextAttributes = large
+        spinner.separatorTextAttributes = small
         spinner.fractionTextAttributes = small
         spinner.updateFormat()
     }
@@ -32,7 +32,7 @@ class ViewController: UIViewController {
 //        spinner.formatter.minimumIntegerDigits = Int(arc4random_uniform(10))
 //        spinner.formatter.minimumFractionDigits = Int(arc4random_uniform(10))
 //        spinner.updateFormat()
-        spinner.value = Double(arc4random_uniform(10000000)) / Double(arc4random_uniform(10000))
+        spinner.value = Double(arc4random_uniform(1000000000)) / Double(arc4random_uniform(100))
     }
 }
 
