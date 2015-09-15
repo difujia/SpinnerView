@@ -86,7 +86,7 @@ public class NumberSpinnerView: UIView {
     }
     
     // MARK: - Properties
-    private let spinner = SpinnerLayer<StringTrackLayer>()
+    private let spinner = SpinnerLayer()
     private var integerLayers = [StringTrackLayer]()
     private var fractionLayers = [StringTrackLayer]()
     lazy private var separatorLayer: StringTrackLayer = {
@@ -110,7 +110,7 @@ public class NumberSpinnerView: UIView {
         let split = valueString.characters.split(separator)
         
         // Update integer part
-        var integerStrings = split.first!.map{ String($0) }
+        let integerStrings = split.first!.map{ String($0) }
         let integerDiff = integerStrings.count - integerLayers.count
         
         if integerDiff > 0 {
@@ -171,7 +171,7 @@ public class NumberSpinnerView: UIView {
         CATransaction.begin()
         CATransaction.setAnimationDuration(alignmentDuration)
         CATransaction.setCompletionBlock(spinToPosition)
-        spinner.components = composition
+        spinner.components = composition.map { $0 as SpinnerComponent }
         
         CATransaction.commit()
     }
@@ -216,40 +216,31 @@ public class NumberSpinnerView: UIView {
 }
 
 extension NumberSpinnerView: SpinnerLayerDelegate {
-    func spinnerLayer<C where C : CALayer, C : SpinnerComponent>(spinnerLayer: SpinnerLayer<C>, preferredSizeDidChange preferredSize: CGSize) {
+    func spinnerLayer(spinnerLayer: SpinnerLayer, preferredSizeDidChange preferredSize: CGSize) {
         layoutSpinner()
     }
 }
 
 /// Implementation response to this call by adjusting the frame of the spinner.
-protocol SpinnerLayerDelegate: class {
-    func spinnerLayer<C where C: CALayer, C: SpinnerComponent>(spinnerLayer: SpinnerLayer<C>, preferredSizeDidChange preferredSize: CGSize)
+@objc protocol SpinnerLayerDelegate {
+    func spinnerLayer(spinnerLayer: SpinnerLayer, preferredSizeDidChange preferredSize: CGSize)
 }
 
-public class SpinnerLayer<Component where Component: CALayer, Component: SpinnerComponent>: CALayer {
-    
-    // Provide initializers because we make this subclass generic
-    override init() {
-        super.init()
-    }
-    
-    override init(layer: AnyObject) {
-        super.init(layer: layer)
-    }
+public class SpinnerLayer: CALayer {
     
     weak var spinnerLayerDelegate: SpinnerLayerDelegate?
     
     /// Spinner components to be arranged in a row in the same order they appear in this array.
-    var components: [Component]? {
+    var components: [SpinnerComponent]? {
         didSet {
-            sublayers = components
+            sublayers = components?.map { $0.layerObject }
             arrangeComponents()
         }
     }
     
     var debugEnabled = false {
         didSet {
-            components?.forEach { $0.debugEnabled = self.debugEnabled}
+            components?.forEach { $0.debugEnabled = self.debugEnabled }
             masksToBounds = !debugEnabled
             backgroundColor = debugEnabled ? SpinnerDebugColor.CGColor : nil
         }
@@ -266,19 +257,20 @@ public class SpinnerLayer<Component where Component: CALayer, Component: Spinner
     
     private func arrangeComponents() {
         // Re-calculate preferredSize and re-arrange x position of each components
-        let preferredBounds = components?.reduce(CGRect.zeroRect) {
+        let preferredBounds = components?.reduce(CGRectZero) {
             previous, component in
             let thisOrigin = CGPoint(x: previous.maxX, y: previous.origin.y)
             let thisFrame = CGRect(origin: thisOrigin, size: component.unitSize)
             // Move this component
-            component.position.x = thisFrame.midX
-            return previous.rectByUnion(thisFrame)
+            component.layerObject.position.x = thisFrame.midX
+            return previous.union(thisFrame)
         }
         preferredSize = preferredBounds?.size ?? CGSizeZero
     }
 }
 
-public protocol SpinnerComponent {
+public protocol SpinnerComponent: class {
+    var layerObject: CALayer { get }
     var unitSize: CGSize { get }
     var debugEnabled: Bool { get set }
     func scrollToUnitAtIndex(index: Int)
@@ -362,7 +354,7 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
         let unitRect = drawingUnits.reduce(CGRectZero) {
             previous, unit in
             let unitBounds = CGRect(origin: previous.origin, size: unit.sizeWithAttributes(textAttributes))
-            return previous.rectByUnion(unitBounds)
+            return previous.union(unitBounds)
         }
         unitSize = unitRect.size
         
@@ -398,13 +390,17 @@ public class StringTrackLayer: CALayer, SpinnerComponent {
     
     // MARK: - SpinnerComponent Protocol
     
-    public private(set) var unitSize = CGSize.zeroSize
+    public private(set) var unitSize = CGSizeZero
     
     public func scrollToUnitAtIndex(index: Int) {
         let offset = unitSize.height * -CGFloat(index)
         let y = bounds.midY + offset
         position.y = y
         maskLayer.position.y = maskLayer.bounds.midY - offset
+    }
+    
+    public var layerObject: CALayer {
+        return self
     }
     
     /**
